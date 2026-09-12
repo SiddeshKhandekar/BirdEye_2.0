@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # BirdEye 2.0 🦅
 > **Autonomous Smart City Intelligence, Computer-Vision Surveillance & Civic Operations Platform**
 
@@ -440,3 +441,7 @@ npm run start
 | **1.0.0** | 2026-08-15 | Core Team | Initial prototype architecture & mock mapping layer |
 | **2.0.0** | 2026-09-01 | Engineering | PostGIS/Haversine deduplication, OSRM routing, and CCTV watchtower |
 | **2.4.0** | 2026-09-12 | AI Systems | Integration of Gemini 3.8 Flash, live spatial copilot radar & edge fallback |
+=======
+# BirdEye_2.0_Galaxecode_Hackathon_Winner
+BirdEye is a privacy-first smart-city platform that transforms anonymous citizen reports and real-world data into verified, deduplicated, prioritized civic issues. With AI verification, intelligent routing, geospatial insights, optimized work orders, environmental intelligence, CCTV analytics, and human-reviewed security alerts.
+>>>>>>> origin/main
