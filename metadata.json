@@ -1,0 +1,6 @@
+{
+  "name": "BirdEye",
+  "description": "AI-powered Smart City & Neighborhood Surveillance platform uniting civic infrastructure intelligence and computer-vision security loops.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
