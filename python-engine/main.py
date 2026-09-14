@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
 import uvicorn
+from fastapi import FastAPI
+from app.api.routes import router as api_router
 
 app = FastAPI(
     title="BirdEye Orchestration AI",
@@ -7,17 +8,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "BirdEye AI Engine"}
-
-@app.post("/api/orchestration/route_civic_issue")
-def route_civic_issue():
-    # Placeholder for the LangGraph invocation
-    return {
-        "status": "pending",
-        "message": "LangGraph state machine placeholder"
-    }
+app.include_router(api_router)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
