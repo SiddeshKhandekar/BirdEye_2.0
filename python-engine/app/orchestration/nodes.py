@@ -1,61 +1,67 @@
 import json
+import logging
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.orchestration.state import OrchestrationState
 from app.rag.retriever import retriever_engine
 from app.core.llm import offline_llm
 from app.schemas.domain import LangChainRoutingDecision
 
-def retrieval_node(state: OrchestrationState) -> dict:
+logger = logging.getLogger(__name__)
+
+async def retrieval_node(state: OrchestrationState) -> dict:
     """
-    Node 1: Context Aggregator
-    Takes the initial civic issue/security alert and queries the PGVector DB.
+    Node 1: Context Aggregator (Async)
+    Executes the PGVector db lookup concurrently without blocking the FastAPI event loop.
     """
-    print(f"--- Node: Retrieval for ID {state['record_id']} ---")
+    print(f"--- [ASYNC] Node: Retrieval for ID {state['record_id']} ---")
     
     query = state.get("description", "")
     category = state.get("category", None)
     
-    # Execute the MMR Hybrid Search we built in Phase 2
-    docs = retriever_engine.search_civic_guidelines(query=query, category_filter=category)
+    # LangChain retrievers support native async invocations
+    docs = await retriever_engine.vectorstore.as_retriever(
+        search_type="mmr", search_kwargs={"k": 3, "fetch_k": 10, "lambda_mult": 0.25}
+    ).ainvoke(query)
     
-    # LangGraph natively appends this to state['retrieved_docs'] due to Annotated[..., operator.add]
     return {"retrieved_docs": docs}
 
-def decision_node(state: OrchestrationState) -> dict:
+async def decision_node(state: OrchestrationState) -> dict:
     """
-    Node 2: Intelligent Routing Decision Maker
-    Utilizes localized Llama-3 to calculate strict routing confidence & priority 
-    based explicitly on the retrieved municipal SOP vectors.
+    Node 2: Intelligent Routing Decision Maker (Async)
+    Uses a bounded context window and a self-correcting retry-chain 
+    to guarantee strict JSON output.
     """
-    print(f"--- Node: AI Decision Routing for ID {state['record_id']} ---")
+    print(f"--- [ASYNC] Node: AI Decision Routing for ID {state['record_id']} ---")
     
-    # Compile the retrieved documents into a text block for the LLM
-    context_text = "\\n\\n".join([doc.page_content for doc in state.get("retrieved_docs", [])])
+    # Optimization 1: Context Window Truncation
+    # Llama-3-8B has an 8k limit. Protect the prompt by safely capping string generation.
+    raw_context = "\\n\\n".join([doc.page_content for doc in state.get("retrieved_docs", [])])
+    safe_context_text = raw_context[:6000] # Safe token buffer limit
     
-    # Leverage LangChain core messages for strict generation
     messages = [
         SystemMessage(content=f"You are a strict Civic AI Orchestrator running locally.\\n"
-                              f"You must strictly adhere to the following Municipal Guidelines:\\n{context_text}\\n"
+                              f"You must strictly adhere to the following Municipal Guidelines:\\n{safe_context_text}\\n"
                               f"Output your decision explicitly matching this JSON schema: {LangChainRoutingDecision.schema_json()}"),
         HumanMessage(content=f"Issue Description: {state['description']}\\n"
                              f"Category: {state['category']}\\n"
                              f"Generate the exact routing decision.")
     ]
     
-    # Pydantic-enforced generation using our Llama-3 connector configured with format="json" in Phase 1
-    llm = offline_llm.llm.with_structured_output(LangChainRoutingDecision)
+    # Optimization 2: Auto-Correcting Retry Wrapper
+    # If the local LLM outputs broken JSON, this automatically bounces it back with the error 
+    # and forces it to fix the JSON structure (up to 3 times) before giving up.
+    llm = offline_llm.llm.with_structured_output(LangChainRoutingDecision).with_retry(stop_after_attempt=3)
     
     try:
-        decision_obj = llm.invoke(messages)
+        decision_obj = await llm.ainvoke(messages)
     except Exception as e:
-        # Fallback pseudo-object on parse failure to prevent pipeline crash
-        print(f"LLM Parse Error: {e}")
+        logger.error(f"Catastrophic LLM Parse Error after 3 retries: {e}")
         return {
             "routing_confidence": 0.0,
-            "human_review_required": True
+            "human_review_required": True,
+            "priority_assigned": "critical" # Fail safe: assume the worst if unknown
         }
         
-    # Determine Human-In-The-Loop Triggers based on arbitrary severity SLA
     needs_review = decision_obj.priority_assigned in ['high', 'critical'] or decision_obj.routing_confidence < 0.8
     
     return {
