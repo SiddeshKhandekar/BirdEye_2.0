@@ -84,26 +84,45 @@ async def resume_paused_graph(record_id: str, payload: HumanOverridePayload):
         if not graph_state or not graph_state.values:
             raise HTTPException(status_code=404, detail="No active or paused thread found for this record_id.")
             
-        print(f"\n[FASTAPI] --> Human Signature Received for ID {record_id} by {payload.manager_signature}. Unlocking thread...")
+        print(f"\\n[FASTAPI] --> Human Signature Received for ID {record_id} by {payload.manager_signature}. Unlocking thread...")
         
-        # We manually inject the human's overrides (e.g. stripping the review blocker)
-        # to guarantee the StateGraph successfully transitions off the paused edge.
+        # Optimization 1: Absolute Manual Rejection Logic
+        if not payload.approved:
+            print(f"[FASTAPI] <-- TICKET REJECTED gracefully by {payload.manager_signature}.")
+            return LangChainRoutingDecision(
+                record_id=record_id,
+                record_type=graph_state.values.get("record_type", "civic_issue"),
+                assigned_department="REJECTED_BY_MANAGER",
+                routing_confidence=1.0,
+                priority_assigned="low",
+                rationale=f"Ticket formally rejected by supervising manager: {payload.manager_signature}",
+                action_plan=["ARCHIVE"],
+                human_review_required=False
+            )
+        
+        # Optimization 2: Comprehensive State Surgery (Handling all overrides)
         state_updates = {
             "human_review_required": False
         }
+        
+        # If the manager over-rides the AI's predictions, we surgically inject them into memory
         if payload.override_priority:
             state_updates["priority_assigned"] = payload.override_priority
             
+        # To override the department, we must fetch the existing final_decision dict and modify it
+        existing_decision = graph_state.values.get("final_decision", {})
+        if payload.override_department:
+            existing_decision["assigned_department"] = payload.override_department
+            state_updates["final_decision"] = existing_decision
+            
         # Natively update the suspended variables securely within LangGraph MemorySaver
-        await civic_orchestrator_app.aupdate_state(config, state_updates)
+        await civic_orchestrator_app.aupdate_state(config, state_updates, as_node="human_approval_queue")
         
         # Passing None to ainvoke natively instructs a paused graph to resume execution from the EXACT node it halted at!
         final_state = await civic_orchestrator_app.ainvoke(None, config=config)
         
         decision_data = final_state.get("final_decision", {})
         
-        # Because we forced 'human_review_required=False', the graph resolves completely normally 
-        # as if the human had been the LLM all along.
         print(f"[FASTAPI] <-- LangGraph successfully completed Human Override for ID {record_id}")
         return LangChainRoutingDecision(**decision_data)
         
