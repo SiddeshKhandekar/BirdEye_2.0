@@ -14,20 +14,25 @@ class HybridRetriever:
         
     def search_civic_guidelines(self, query: str, category_filter: Optional[str] = None, top_k: int = 3) -> List[Document]:
         """
-        Retrieves the exact municipal SOP guidelines required to route an issue.
-        If a category filter is provided, it explicitly restricts RAG context to that domain.
+        Retrieves municipal SOP guidelines using Maximal Marginal Relevance (MMR) 
+        combining semantic vector similarity with JSONB category filters.
         """
-        search_kwargs = {"k": top_k}
+        # Optimization 1: Use MMR to ensure fetched chunks are relevant but diverse
+        search_type = "mmr"
         
-        # If we know the category of the issue beforehand (e.g., 'pothole', 'water'),
-        # we strictly filter the SQL JSONB metadata to ensure zero LLM hallucination across domains.
+        # Optimization 2: Fetch 10 candidates from DB, but only return the top_k most diverse ones
+        search_kwargs = {
+            "k": top_k,
+            "fetch_k": 10,
+            "lambda_mult": 0.25 # Favor diversity over raw similarity to prevent duplicate contexts
+        }
+        
         if category_filter:
-            # Langchain PGVector parses these into strict WHERE clauses against JSONB columns
             search_kwargs["filter"] = {"source_file": category_filter}
             
-        print(f"Executing Vector Search with query: '{query}' | Filter: {category_filter}")
+        print(f"Executing MMR Hybrid Search | Query: '{query}' | Filter: {category_filter}")
         
-        retriever = self.vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
+        retriever = self.vectorstore.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
         
         return retriever.invoke(query)
 
