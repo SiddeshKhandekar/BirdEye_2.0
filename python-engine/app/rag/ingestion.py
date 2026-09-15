@@ -62,12 +62,14 @@ class VectorDBIngestor:
 
     def ingest_to_pgvector(self, chunked_docs):
         """
-        Placeholder implementation for saving chunks to Postgres/PGVector.
-        This will be executed in Part 2 of Phase 2.
+        Saves chunks securely and locally into the PGVector Postgres database.
         """
-        import json
-        print(f"Prepared to ingest {len(chunked_docs)} chunks to Vector Database.")
-        # E.g. PGVector.from_documents(chunked_docs, self.embeddings, connection_string=DB_URL)
+        from app.rag.vectorstore import PostgresVectorDB
+        print(f"Prepared to ingest {len(chunked_docs)} semantic chunks to Vector Database.")
+        
+        db = PostgresVectorDB()
+        db.add_documents_to_store(chunked_docs)
+        
         return True
 
 if __name__ == "__main__":
