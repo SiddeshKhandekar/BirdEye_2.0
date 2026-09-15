@@ -31,19 +31,19 @@ def build_orchestration_graph():
     """
     workflow = StateGraph(OrchestrationState)
     
-    # 2. Add the autonomous engines
+    # Add the autonomous engines
     workflow.add_node("retrieve_context", retrieval_node)
     workflow.add_node("evaluate_decision", decision_node)
     
-    # 3. Add the native async end-points
+    # Add the native async end-points
     workflow.add_node("human_approval_queue", human_approval_queue)
     workflow.add_node("dispatch_system", dispatch_system)
     
-    # 4. Define the sequential execution flow
+    # Define the sequential execution flow
     workflow.add_edge(START, "retrieve_context")
     workflow.add_edge("retrieve_context", "evaluate_decision")
     
-    # 5. Define the Dynamic Conditional Edge
+    # Define the Dynamic Conditional Edge
     workflow.add_conditional_edges(
         "evaluate_decision",   
         route_based_on_safety, 
@@ -57,11 +57,8 @@ def build_orchestration_graph():
     workflow.add_edge("dispatch_system", END)
     
     # Optimization: Inject MemorySaver Checkpointing
-    # This acts as persistence so that if the graph hits "human_review", 
-    # the thread pauses safely in memory and can be externally un-paused later by a backend API.
     memory_checkpointer = MemorySaver()
     
     return workflow.compile(checkpointer=memory_checkpointer)
 
-# Export the optimized stateful application singleton
 civic_orchestrator_app = build_orchestration_graph()
